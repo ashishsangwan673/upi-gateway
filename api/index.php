@@ -39,12 +39,30 @@ foreach (['packages.php', 'services.php'] as $cacheFile) {
 }
 
 // Restore the "/api" prefix Vercel strips from API requests.
+// How the path arrives depends on which Vercel routing path handled
+// the request: via the vercel.json catch-all it is "/v1/..."; via
+// Vercel's native /api function routing it can be
+// "/api/index.php/v1/..." with PATH_INFO "/v1/...". Normalise all
+// of them to "/api/v1/..." before Laravel boots. Requests that
+// already arrive as "/api/v1/..." are left untouched.
 $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
 $uriPath = parse_url($requestUri, PHP_URL_PATH) ?: '/';
-if (str_starts_with($uriPath, '/v1/') || $uriPath === '/v1') {
-    $rest = parse_url($requestUri, PHP_URL_QUERY);
-    $_SERVER['REQUEST_URI'] = '/api'.$uriPath.($rest !== null && $rest !== '' ? '?'.$rest : '');
-    $_SERVER['PATH_INFO'] = '/api'.$uriPath;
+$pathInfo = $_SERVER['PATH_INFO'] ?? '';
+$candidate = null;
+foreach ([$uriPath, $pathInfo] as $p) {
+    if (str_starts_with($p, '/v1/') || $p === '/v1') {
+        $candidate = $p;
+        break;
+    }
+    if (str_contains($p, '/index.php/v1/')) {
+        $candidate = substr($p, strpos($p, '/index.php/v1/') + strlen('/index.php'));
+        break;
+    }
+}
+if ($candidate !== null) {
+    $query = parse_url($requestUri, PHP_URL_QUERY);
+    $_SERVER['REQUEST_URI'] = '/api'.$candidate.($query !== null && $query !== '' ? '?'.$query : '');
+    $_SERVER['PATH_INFO'] = '/api'.$candidate;
 }
 
 require __DIR__.'/../public/index.php';
