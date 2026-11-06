@@ -38,6 +38,15 @@ foreach (['packages.php', 'services.php'] as $cacheFile) {
     }
 }
 
+// ROOT CAUSE (verified live 2026-11-06): Symfony's Request::prepareBaseUrl()
+// treats the directory of SCRIPT_NAME ("/api") as the app's base URL
+// and strips it from the request path, so "/api/v1/accounts" reaches
+// Laravel as "v1/accounts" -> 404. Point SCRIPT_NAME/PHP_SELF at the
+// root ("/index.php") so no "/api" prefix is stripped. This also
+// keeps plain web paths ("/login", "/pay/...") working.
+$_SERVER['SCRIPT_NAME'] = '/index.php';
+$_SERVER['PHP_SELF'] = '/index.php';
+
 // Restore the "/api" prefix Vercel strips from API requests.
 // How the path arrives depends on which Vercel routing path handled
 // the request: via the vercel.json catch-all it is "/v1/..."; via
