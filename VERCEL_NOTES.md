@@ -15,7 +15,8 @@ folder were changed for Vercel; the app code itself is untouched.
   from `/public/build`. Env vars set here are NON-SECRET only and tuned
   for serverless: `CACHE_STORE=array`, `SESSION_DRIVER=cookie`,
   `QUEUE_CONNECTION=sync`, `LOG_CHANNEL=stderr`,
-  `DB_CONNECTION=sqlite` with `DB_DATABASE=/tmp/database.sqlite`.
+  `DB_CONNECTION=pgsql` with `DB_SSLMODE=require` (database host/user/
+  password come from Vercel dashboard env vars — see Supabase section).
   `vercel-php` is a community runtime, now ARCHIVED by its maintainer,
   who recommends Vercel's container runtime for new PHP projects
   instead. It may stop working on Vercel at any time.
@@ -30,6 +31,47 @@ No secrets are in this repo. `.env` is excluded and `APP_KEY` is
 deliberately NOT in `vercel.json` — it must be set as a Vercel
 environment variable (see below).
 
+## 2026-11-06 fix — Vercel strips the "/api" prefix (verified live)
+
+Requests to `/api/v1/accounts` returned Laravel 404
+`{"message": "The route v1/accounts could not be found."}`, while
+`/api/login` returned the login page and `/api/docs` the docs page —
+Vercel routes `/api/*` to the `api/index.php` function with the
+leading `/api` segment stripped. `api/index.php` now restores the
+prefix for paths starting `/v1/` before Laravel boots (verified
+locally: `/v1/accounts` → 401 `Invalid API key or secret`, i.e. the
+API route now matches). Non-`/api` paths are untouched.
+
+## Database — Supabase Postgres (free tier, chosen 2026-11-06)
+
+Neon dropped per user instruction; use Supabase, NOT Turso (Laravel
+has no native Turso/libSQL driver). Free tier: 500 MB database,
+2 active projects, 5 GB egress/month, 60 direct connections.
+Project pauses after 7 days of inactivity — restore from the
+Supabase dashboard (takes ~30 s to wake). No automatic backups.
+
+Connection (Supabase dashboard → Project Settings → Database):
+use the **Supavisor Session pooler** host `<ref>.pooler.supabase.com`,
+port **5432**, user `postgres.<ref>`, database `postgres`,
+`sslmode=require`. Do NOT use the direct host `db.<ref>.supabase.co`
+(it is IPv6-only on free tier) and do NOT use transaction pooler
+port 6543 (it breaks Laravel's prepared statements).
+
+Vercel env vars (Project → Settings → Environment Variables,
+Production + Preview): `DB_CONNECTION=pgsql`, `DB_HOST`,
+`DB_PORT=5432`, `DB_DATABASE=postgres`, `DB_USERNAME`,
+`DB_PASSWORD`, `DB_SSLMODE=require`. `vercel.json` already defaults
+`DB_CONNECTION=pgsql` / `DB_SSLMODE=require`; dashboard values win
+over `vercel.json`. Never put the password or connection string in
+the repo, chat, or any report.
+
+Then, from a machine with PHP + pdo_pgsql: point the local clone's
+`.env` at the same Supabase DB, run `php artisan migrate --force`,
+`php artisan app:create-admin <test email>`, seed a `test@upi`
+manual payment account, redeploy (push to `main` auto-deploys),
+and verify login → dashboard → API order → pay page → QR → UTR →
+approve live.
+
 ## Env vars you MUST set in Vercel (Project → Settings → Environment Variables)
 
 Generate a key locally first (never reuse the local test key):
@@ -42,7 +84,7 @@ php artisan key:generate --show   # paste the base64:... value as APP_KEY
 |---|---|
 | `APP_KEY` | output of `key:generate --show` (required — without it even the homepage 500s, because Laravel encrypts cookies) |
 | `APP_URL` | `https://<your-project>.vercel.app` |
-| `DB_CONNECTION` / `DB_DATABASE` | already in `vercel.json` (SQLite on `/tmp`) — see limits below |
+| `DB_CONNECTION` / `DB_HOST` / `DB_PORT` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` / `DB_SSLMODE` | Supabase Postgres — see Supabase section above (Session pooler, port 5432, `sslmode=require`). No DB works without these; the old `/tmp` SQLite setup is gone. |
 
 ## What Vercel CANNOT do for this app (honest limits)
 
