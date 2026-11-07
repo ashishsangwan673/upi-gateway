@@ -13,6 +13,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Vercel terminates TLS and forwards the request to PHP over
+        // plain HTTP with X-Forwarded-Proto: https. Without trusting
+        // the proxy, Laravel generates http:// URLs, so every form
+        // posts over HTTP and browsers block it as an insecure form.
+        // Trusting the proxy makes URL generation honour the original
+        // https scheme. Local dev sends no such header, so local URLs
+        // stay http.
+        $middleware->trustProxies(at: '*');
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
             'active' => \App\Http\Middleware\EnsureActive::class,

@@ -47,6 +47,18 @@ foreach (['packages.php', 'services.php'] as $cacheFile) {
 $_SERVER['SCRIPT_NAME'] = '/index.php';
 $_SERVER['PHP_SELF'] = '/index.php';
 
+// Belt-and-braces for the https scheme (verified live 2026-11-07):
+// Vercel terminates TLS and forwards over plain HTTP, so without
+// this Laravel generated http:// form actions and Chrome blocked
+// login with an insecure-form interstitial followed by a 419.
+// The trustProxies('*') call in bootstrap/app.php is the primary
+// fix; this also marks the request secure before boot whenever the
+// proxy says the original request was https. Plain local requests
+// (no X-Forwarded-Proto) are untouched and stay http.
+if (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+}
+
 // Restore the "/api" prefix Vercel strips from API requests.
 // How the path arrives depends on which Vercel routing path handled
 // the request: via the vercel.json catch-all it is "/v1/..."; via
